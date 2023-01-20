@@ -1,0 +1,113 @@
+#include <Servo.h>
+#include <EEPROM.h>
+
+Servo mouthServo1;
+Servo mouthServo2;
+
+boolean micRead = 0;
+boolean btnRead = 0;
+
+int mouthServo1Pin = 9;   // MG-995
+int mouthServo2Pin = 10;  // SR
+int micPin = 7;
+int btnPin = 2;
+
+enum State { CLOSE,
+             OPEN,
+             BUSY };
+
+State curState = CLOSE;  // change depending on last state
+boolean btnLast = 1;
+unsigned long startMs;
+
+unsigned long holdTimeMs = 10000;
+
+
+void setup() {
+  pinMode(btnPin, INPUT_PULLUP);
+  pinMode(micPin, INPUT);
+  // resetToBottom();
+  curState = EEPROM.read(0);
+  // resetToBottom();
+  Serial.begin(9600);
+  // Serial.println(EEPROM.read(0));
+}
+
+void resetToBottom() {
+  attachBoth();
+  mouthServo1.write(180);
+  mouthServo2.write(180);
+  delay(1000);
+  detachBoth();
+}
+
+void attachBoth() {
+  mouthServo1.attach(mouthServo1Pin);  // , 500, 2500);
+  mouthServo2.attach(mouthServo2Pin);  //, 500, 2500);
+}
+
+void detachBoth() {
+  mouthServo1.write(90);
+  mouthServo2.write(90);
+  mouthServo1.detach();
+  mouthServo2.detach();
+}
+
+void open() {
+  curState = BUSY;
+  Serial.println("open");
+  attachBoth();
+  mouthServo1.write(0);
+  mouthServo2.write(0);
+  delay(180);
+  detachBoth();
+  delay(2000);
+  curState = OPEN;
+  EEPROM.update(0, 1);
+}
+
+void close() {
+  curState = BUSY;
+  Serial.println("close");
+  attachBoth();
+  mouthServo1.write(180);
+  mouthServo2.write(180);
+  delay(170);
+  detachBoth();
+  delay(2000);
+  curState = CLOSE;
+  EEPROM.update(0, 0);
+}
+
+void loop() {
+  micRead = digitalRead(micPin);
+  btnRead = digitalRead(btnPin);
+  if (curState == OPEN) {
+    if (btnRead == LOW) {
+      close();
+    }
+  } else if (curState == CLOSE) {
+    // btnRead is inversed due to input_pullup
+    if (micRead == HIGH) {
+      open();
+      Serial.println("opened from mic");
+    } else if (btnRead == LOW) {
+      if (btnLast == HIGH) {
+        Serial.println("started holding");
+        btnLast = LOW;
+        startMs = millis();
+      }
+      Serial.println(millis() - startMs);
+      if (millis() - startMs >= holdTimeMs) {
+        open();
+        Serial.println("done");
+        btnLast = HIGH;
+      }
+    } else {
+      if (btnLast == LOW) {
+        Serial.println("stopped holding");
+        btnLast = HIGH;
+      }
+    }
+  }
+}
